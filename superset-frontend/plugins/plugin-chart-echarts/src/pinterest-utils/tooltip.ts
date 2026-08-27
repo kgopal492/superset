@@ -100,8 +100,9 @@ class DeltaTableTooltipFormatter {
     const { xAxis: xAxisOrig, tooltipTimeFormat } = formData;
 
     const { verboseMap = {} } = datasource;
-    const xAxisColName =
-      verboseMap[xAxisOrig] || getColumnLabel(xAxisOrig || DTTM_ALIAS);
+    // queriesData holds the raw response, keyed by physical column labels, so
+    // resolve the x-axis to its column label rather than its verbose name.
+    const xAxisColName = getColumnLabel(xAxisOrig || DTTM_ALIAS);
 
     this.dataByTimestamp = {} as Record<number, TimeseriesDataRecord>;
     queriesData.forEach((queryData, queryIdx) => {
@@ -166,10 +167,25 @@ class DeltaTableTooltipFormatter {
 
   getDataColumn = (seriesName: string) => {
     const sampleChartData = Object.values(this.dataByTimestamp)[0];
-    if (!(seriesName in sampleChartData)) {
-      return this.columnNameByVerboseName[seriesName];
+    if (seriesName in sampleChartData) {
+      return seriesName;
     }
-    return seriesName;
+    // Mixed Timeseries charts with query identifiers enabled embed a
+    // "(Query A)"/"(Query B)" token in each series name that is absent from the
+    // raw query response. Query B columns that collide with Query A are keyed
+    // with a trailing " (1)" when the two queries are merged (see constructor).
+    const queryAKey = seriesName.replace(' (Query A)', '');
+    if (queryAKey in sampleChartData) {
+      return queryAKey;
+    }
+    const queryBKey = seriesName.replace(' (Query B)', '');
+    if (`${queryBKey} (1)` in sampleChartData) {
+      return `${queryBKey} (1)`;
+    }
+    if (queryBKey in sampleChartData) {
+      return queryBKey;
+    }
+    return this.columnNameByVerboseName[seriesName];
   };
 
   getDataPercentChange(
